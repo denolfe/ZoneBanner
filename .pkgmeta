@@ -1,0 +1,19 @@
+package-as: ZoneBanner
+
+enable-nolib-creation: no
+
+# Libraries are fetched at package time, never committed. Uncomment as needed and
+# list them in the .toc (before your own files), e.g. Libs\LibStub\LibStub.lua
+# externals:
+#   Libs/LibStub: https://repos.wowace.com/wow/libstub/trunk
+#   Libs/CallbackHandler-1.0: https://repos.wowace.com/wow/callbackhandler/trunk/CallbackHandler-1.0
+#   Libs/AceDB-3.0: https://repos.wowace.com/wow/ace3/trunk/AceDB-3.0
+
+ignore:
+  - tests
+  - .github
+  - .busted
+  - .luacheckrc
+  - .luarc.json
+  - stylua.toml
+  - README.md

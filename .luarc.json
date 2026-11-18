@@ -1,0 +1,9 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime.version": "Lua 5.1",
+  "workspace.library": [
+    "REPLACE_WITH_PATH_TO/vscode-wow-api/Annotations"
+  ],
+  "workspace.ignoreDir": [".release", "Libs"],
+  "diagnostics.globals": ["ZoneBannerDB", "ZoneBanner", "SLASH_ZONEBANNER1", "ZoneBanner_OnAddonCompartmentClick"]
+}
