@@ -22,6 +22,10 @@ Options:
 - The only thing it does to Blizzard frames is `Hide()`/`Show()` on `ZoneTextFrame` and
   `SubZoneTextFrame`. Those are plain, non-secure frames, so there are no field writes and
   no replaced scripts.
+- Banners queue instead of overlapping. If you change areas while one is showing, it
+  stays up for at least 1.5 seconds, fades out quickly, and then the next one shows.
+  Only the latest area waits in the queue, and walking back into the area already on
+  screen cancels it.
 - The banner is its own frame. It ignores the mouse and is skipped by gamepad focus.
 - If a patch removes `FadingFrame_Show`, the addon falls back to the zone events. It then
   can't hide the default text.

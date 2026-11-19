@@ -22,6 +22,12 @@ local WIDTH = 418 -- EventToastManagerFrame fixedWidth
 local TOP_OFFSET = -190 -- EventToastManagerFrame anchor
 local PADDING = 14
 local FADE_IN, FADE_OUT, GROW = 0.5, 1.0, 0.5
+-- Queueing: when a new banner arrives while one is showing, the current one stays
+-- readable for at least MIN_VISIBLE seconds, then fades out quickly (HANDOFF_FADE)
+-- and the newest pending banner takes over. Only the latest request is kept, so
+-- walking back and forth over a border never builds a backlog of stale names.
+local MIN_VISIBLE = 1.5
+local HANDOFF_FADE = 0.4
 -- IsResting() can lag the zone event by a moment when you first enter a city.
 local EVALUATE_DELAY = 0.1
 
@@ -29,8 +35,14 @@ local TITLE_R, TITLE_G, TITLE_B = 1, 0.82, 0 -- level-up gold
 local SUB_R, SUB_G, SUB_B = 1, 1, 1
 
 local frame
-local elapsedTotal, holdTime = 0, 3
+local elapsedTotal, holdTime, fadeOut = 0, 3, FADE_OUT
 local lineWidth, shadowHeight = WIDTH, 80
+
+-- What is on screen now, and the one waiting (latest wins).
+local currentTitle, currentSub
+local pendingTitle, pendingSub
+
+local Display -- forward declaration (OnUpdate hands off to the next banner)
 
 -- Building ----------------------------------------------------------------------
 
@@ -61,19 +73,35 @@ end
 
 local function OnUpdate(self, elapsed)
 	elapsedTotal = elapsedTotal + elapsed
-	local t = elapsedTotal
+	local fadeOutStart = FADE_IN + holdTime
 
-	if t >= FADE_IN + holdTime + FADE_OUT then
-		self:Hide()
+	-- Something is waiting: once this one has been readable long enough, cut the
+	-- hold short and start a quick fade-out (from the current alpha, no pop).
+	if pendingTitle and elapsedTotal < fadeOutStart and elapsedTotal >= MIN_VISIBLE then
+		holdTime = max(0, elapsedTotal - FADE_IN)
+		fadeOutStart = FADE_IN + holdTime
+		fadeOut = HANDOFF_FADE
+	end
+
+	local t = elapsedTotal
+	if t >= fadeOutStart + fadeOut then
+		if pendingTitle then
+			local title, subtitle = pendingTitle, pendingSub
+			pendingTitle, pendingSub = nil, nil
+			Display(title, subtitle)
+		else
+			currentTitle, currentSub = nil, nil
+			self:Hide()
+		end
 		return
 	end
 
 	if t < FADE_IN then
 		self:SetAlpha(t / FADE_IN)
-	elseif t < FADE_IN + holdTime then
+	elseif t < fadeOutStart then
 		self:SetAlpha(1)
 	else
-		self:SetAlpha(1 - (t - FADE_IN - holdTime) / FADE_OUT)
+		self:SetAlpha(1 - (t - fadeOutStart) / fadeOut)
 	end
 
 	if t <= GROW then
@@ -122,9 +150,6 @@ local function Build()
 	shadowHeight = f.Shadow:GetHeight() or 80
 
 	f:SetScript("OnUpdate", OnUpdate) -- only runs while shown
-	f:SetScript("OnHide", function(self)
-		self:SetAlpha(0)
-	end)
 
 	ns.Gamepad.Ignore(f) -- never a gamepad focus target
 	return f
@@ -132,12 +157,18 @@ end
 
 -- Showing -----------------------------------------------------------------------
 
--- title: big gold line. subtitle: optional smaller white line above it.
-function Banner.Show(title, subtitle)
-	if type(title) ~= "string" or title == "" then
-		return
+local function Normalize(subtitle)
+	if type(subtitle) == "string" and subtitle ~= "" then
+		return subtitle
 	end
+	return nil
+end
+
+-- Puts a banner on screen immediately, restarting the animation.
+-- Assigns the forward-declared `local Display` above; luacheck confirms it is local.
+Display = function(title, subtitle) -- check-ignore: global-write forward-declared local
 	frame = frame or Build()
+	currentTitle, currentSub = title, subtitle
 
 	local hasSub = type(subtitle) == "string" and subtitle ~= ""
 	frame.SubTitle:ClearAllPoints()
@@ -157,12 +188,36 @@ function Banner.Show(title, subtitle)
 	frame:SetHeight(height)
 
 	holdTime = (ns.db and ns.db.profile.holdTime) or 3
+	fadeOut = FADE_OUT
 	elapsedTotal = 0
 	frame.TopLine:SetWidth(1)
 	frame.BottomLine:SetWidth(1)
 	frame.Shadow:SetHeight(1)
 	frame:SetAlpha(0)
-	frame:Show() -- restarts cleanly if a banner was already showing
+	frame:Show()
+end
+
+-- title: big gold line. subtitle: optional smaller white line above it.
+-- Queue-aware: never interrupts a banner that is on screen.
+function Banner.Show(title, subtitle)
+	if type(title) ~= "string" or title == "" then
+		return
+	end
+	subtitle = Normalize(subtitle)
+
+	if not (frame and frame:IsShown() and currentTitle) then
+		pendingTitle, pendingSub = nil, nil
+		Display(title, subtitle)
+		return
+	end
+
+	if title == currentTitle and subtitle == currentSub then
+		-- Back where the current banner says you are: drop whatever was waiting.
+		pendingTitle, pendingSub = nil, nil
+		return
+	end
+
+	pendingTitle, pendingSub = title, subtitle -- latest wins
 end
 
 function Banner.Test()
