@@ -14,6 +14,12 @@ local CHECKBOXES = {
 	{ key = "enabled", label = "Enable", tip = "Show zone names in the level-up banner style." },
 	{ key = "citiesOnly", label = "Only in cities and towns", tip = "Only when you are in a rested area (cities, inns)." },
 	{ key = "replaceBlizzard", label = "Hide the default zone text", tip = "Hide Blizzard's zone text when the banner shows." },
+	{ key = "showDiscovery", label = "Show discoveries in the banner", tip = "Adds \"Discovered · +XP\" under the area name." },
+	{
+		key = "hideBlizzardDiscovery",
+		label = "Hide the yellow discovery message",
+		tip = "Clears Blizzard's copy, but only when no other message is showing.",
+	},
 }
 
 local HOLD_MIN, HOLD_MAX = 1, 10

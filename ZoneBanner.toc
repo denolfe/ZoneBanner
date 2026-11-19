@@ -17,4 +17,5 @@ Core.lua
 DB.lua
 Gamepad.lua
 Banner.lua
+Discovery.lua
 Options.lua

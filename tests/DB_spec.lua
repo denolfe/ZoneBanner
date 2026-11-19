@@ -12,6 +12,8 @@ describe("DB", function()
 		assert.is_true(db.profile.enabled)
 		assert.is_false(db.profile.citiesOnly)
 		assert.is_true(db.profile.replaceBlizzard)
+		assert.is_true(db.profile.showDiscovery)
+		assert.is_false(db.profile.hideBlizzardDiscovery)
 		assert.are.equal(3, db.profile.holdTime)
 	end)
 

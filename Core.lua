@@ -85,6 +85,7 @@ ns.On("ADDON_LOADED", OnAddonLoaded)
 ns.On("PLAYER_LOGIN", function()
 	ns.Gamepad.Init()
 	ns.Banner.Init()
+	ns.Discovery.Init()
 	ns.Options.Register()
 end)
 
@@ -94,6 +95,9 @@ local function HandleSlash(input)
 	local command = strtrim(input or ""):lower()
 	if command == "test" then
 		ns.Banner.Test()
+	elseif command == "debug" then
+		ns.debug = not ns.debug -- session only, not saved
+		ns.Print(ns.debug and "Debug on: zone and discovery messages are printed to chat." or "Debug off.")
 	else
 		ns.Options.Open()
 	end

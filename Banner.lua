@@ -15,7 +15,7 @@ local _, ns = ...
 local Banner = {}
 ns.Banner = Banner
 
-local C_Timer, CreateFrame, UIParent = C_Timer, CreateFrame, UIParent
+local C_Timer, CreateFrame, GetTime, UIParent = C_Timer, CreateFrame, GetTime, UIParent
 local min, max = math.min, math.max
 
 local WIDTH = 418 -- EventToastManagerFrame fixedWidth
@@ -33,14 +33,22 @@ local EVALUATE_DELAY = 0.1
 
 local TITLE_R, TITLE_G, TITLE_B = 1, 0.82, 0 -- level-up gold
 local SUB_R, SUB_G, SUB_B = 1, 1, 1
+local DETAIL_R, DETAIL_G, DETAIL_B = 1, 0.93, 0.76 -- Blizzard's default zone-text cream
 
 local frame
 local elapsedTotal, holdTime, fadeOut = 0, 3, FADE_OUT
 local lineWidth, shadowHeight = WIDTH, 80
 
 -- What is on screen now, and the one waiting (latest wins).
+-- detail = optional small line under the title (e.g. "Discovered · +120 XP");
+-- onDetailShown = callback run once that detail is actually on screen.
 local currentTitle, currentSub
-local pendingTitle, pendingSub
+local pendingTitle, pendingSub, pendingDetail, pendingDetailShown
+
+-- A discovery that arrived before its banner (the usual order: the server's
+-- explore message lands before our zone evaluation). Matched by area name.
+local STASH_SECONDS = 3
+local stashName, stashDetail, stashShown, stashTime
 
 local Display -- forward declaration (OnUpdate hands off to the next banner)
 
@@ -86,9 +94,9 @@ local function OnUpdate(self, elapsed)
 	local t = elapsedTotal
 	if t >= fadeOutStart + fadeOut then
 		if pendingTitle then
-			local title, subtitle = pendingTitle, pendingSub
-			pendingTitle, pendingSub = nil, nil
-			Display(title, subtitle)
+			local title, subtitle, detail, onShown = pendingTitle, pendingSub, pendingDetail, pendingDetailShown
+			pendingTitle, pendingSub, pendingDetail, pendingDetailShown = nil, nil, nil, nil
+			Display(title, subtitle, detail, onShown)
 		else
 			currentTitle, currentSub = nil, nil
 			self:Hide()
@@ -145,6 +153,11 @@ local function Build()
 	f.Title:SetTextColor(TITLE_R, TITLE_G, TITLE_B)
 	f.Title:SetJustifyH("CENTER")
 
+	f.Detail = f:CreateFontString(nil, "ARTWORK")
+	FontOrFallback(f.Detail, "SystemFont_Shadow_Med1", "GameFontHighlight")
+	f.Detail:SetTextColor(DETAIL_R, DETAIL_G, DETAIL_B)
+	f.Detail:SetJustifyH("CENTER")
+
 	-- Natural sizes, captured once so the grow animation knows where to stop.
 	lineWidth = f.TopLine:GetWidth() or WIDTH
 	shadowHeight = f.Shadow:GetHeight() or 80
@@ -164,18 +177,32 @@ local function Normalize(subtitle)
 	return nil
 end
 
--- Puts a banner on screen immediately, restarting the animation.
--- Assigns the forward-declared `local Display` above; luacheck confirms it is local.
-Display = function(title, subtitle) -- check-ignore: global-write forward-declared local
-	frame = frame or Build()
-	currentTitle, currentSub = title, subtitle
+local function MatchesArea(name, title, subtitle)
+	return name ~= nil and (name == title or name == subtitle)
+end
 
-	local hasSub = type(subtitle) == "string" and subtitle ~= ""
+-- Returns the stashed discovery detail for this banner, if it is fresh and matches.
+local function TakeStash(title, subtitle)
+	if stashName and GetTime() - stashTime <= STASH_SECONDS and MatchesArea(stashName, title, subtitle) then
+		local detail, onShown = stashDetail, stashShown
+		stashName, stashDetail, stashShown, stashTime = nil, nil, nil, nil
+		return detail, onShown
+	end
+	return nil
+end
+
+-- Sets the texts and stacks subtitle / title / detail, resizing the banner.
+local function Layout(subtitle, title, detail)
+	local hasSub = subtitle ~= nil
+	local hasDetail = detail ~= nil
 	frame.SubTitle:ClearAllPoints()
 	frame.Title:ClearAllPoints()
-	frame.SubTitle:SetText(hasSub and subtitle or "")
+	frame.Detail:ClearAllPoints()
+	frame.SubTitle:SetText(subtitle or "")
 	frame.SubTitle:SetShown(hasSub)
 	frame.Title:SetText(title)
+	frame.Detail:SetText(detail or "")
+	frame.Detail:SetShown(hasDetail)
 
 	local height = PADDING * 2 + (frame.Title:GetStringHeight() or 40)
 	if hasSub then
@@ -185,7 +212,28 @@ Display = function(title, subtitle) -- check-ignore: global-write forward-declar
 	else
 		frame.Title:SetPoint("TOP", frame, "TOP", 0, -PADDING)
 	end
+	if hasDetail then
+		frame.Detail:SetPoint("TOP", frame.Title, "BOTTOM", 0, -4)
+		height = height + (frame.Detail:GetStringHeight() or 14) + 4
+	end
 	frame:SetHeight(height)
+end
+
+local function RunShown(onShown)
+	if type(onShown) == "function" then
+		ns.SafeCall(onShown)
+	end
+end
+
+-- Puts a banner on screen immediately, restarting the animation.
+-- Assigns the forward-declared `local Display` above; luacheck confirms it is local.
+Display = function(title, subtitle, detail, onDetailShown) -- check-ignore: global-write forward-declared local
+	frame = frame or Build()
+	currentTitle, currentSub = title, subtitle
+	Layout(subtitle, title, detail)
+	if detail then
+		RunShown(onDetailShown)
+	end
 
 	holdTime = (ns.db and ns.db.profile.holdTime) or 3
 	fadeOut = FADE_OUT
@@ -206,18 +254,37 @@ function Banner.Show(title, subtitle)
 	subtitle = Normalize(subtitle)
 
 	if not (frame and frame:IsShown() and currentTitle) then
-		pendingTitle, pendingSub = nil, nil
-		Display(title, subtitle)
+		pendingTitle, pendingSub, pendingDetail, pendingDetailShown = nil, nil, nil, nil
+		Display(title, subtitle, TakeStash(title, subtitle))
 		return
 	end
 
 	if title == currentTitle and subtitle == currentSub then
 		-- Back where the current banner says you are: drop whatever was waiting.
-		pendingTitle, pendingSub = nil, nil
+		pendingTitle, pendingSub, pendingDetail, pendingDetailShown = nil, nil, nil, nil
 		return
 	end
 
-	pendingTitle, pendingSub = title, subtitle -- latest wins
+	-- Latest wins.
+	pendingTitle, pendingSub = title, subtitle
+	pendingDetail, pendingDetailShown = TakeStash(title, subtitle)
+end
+
+-- Attach a discovery line ("Discovered · +120 XP") to the banner for `name`.
+-- onShown runs once the line is actually on screen (used to hide Blizzard's copy).
+-- If no banner for that area exists yet, it waits a few seconds for one.
+function Banner.AddDiscovery(name, detail, onShown)
+	if type(name) ~= "string" or name == "" or type(detail) ~= "string" then
+		return
+	end
+	if frame and frame:IsShown() and MatchesArea(name, currentTitle, currentSub) then
+		Layout(currentSub, currentTitle, detail)
+		RunShown(onShown)
+	elseif pendingTitle and MatchesArea(name, pendingTitle, pendingSub) then
+		pendingDetail, pendingDetailShown = detail, onShown
+	else
+		stashName, stashDetail, stashShown, stashTime = name, detail, onShown, GetTime()
+	end
 end
 
 function Banner.Test()

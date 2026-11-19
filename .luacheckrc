@@ -20,7 +20,8 @@ read_globals = {
 	"CreateFrame", "GetBuildInfo", "InCombatLockdown", "geterrorhandler",
 	"GetUnitName", "UnitName", "GetAddOnMetadata", "GetContainerNumSlots",
 	"issecretvalue", "canaccessvalue",
-	"GetZoneText", "GetSubZoneText", "IsResting",
+	"GetZoneText", "GetSubZoneText", "IsResting", "GetTime",
+	"ERR_ZONE_EXPLORED", "ERR_ZONE_EXPLORED_XP",
 	-- Namespaces
 	"C_AddOns", "C_Container", "C_Texture", "C_Timer", "C_EventUtils", "C_InputInterfaceStyle", "C_RestrictedActions",
 	"Enum",
@@ -28,7 +29,7 @@ read_globals = {
 	"WOW_PROJECT_ID", "WOW_PROJECT_MAINLINE", "WOW_PROJECT_CAMELOT",
 	-- FrameXML
 	"UIParent", "Settings", "GamepadMode",
-	"FadingFrame_Show", "ZoneTextFrame", "SubZoneTextFrame",
+	"FadingFrame_Show", "ZoneTextFrame", "SubZoneTextFrame", "UIErrorsFrame",
 	"SmartNavigation_MarkFrameIgnored", "SmartNavigation_MarkFrameFocusable",
 	-- Optional dependencies
 	"ConsolePort",

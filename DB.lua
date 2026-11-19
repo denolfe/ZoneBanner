@@ -18,6 +18,10 @@ local defaults = {
 		citiesOnly = false,
 		-- Hide Blizzard's own zone/subzone text when the banner shows.
 		replaceBlizzard = true,
+		-- Fold "Discovered X: N experience gained" into the banner.
+		showDiscovery = true,
+		-- Also clear Blizzard's yellow copy (UIErrorsFrame) once ours shows.
+		hideBlizzardDiscovery = false,
 		-- Seconds the banner stays fully visible.
 		holdTime = 3,
 	},
