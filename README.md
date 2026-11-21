@@ -35,6 +35,12 @@ Options:
   stays up for at least 1.5 seconds, fades out quickly, and then the next one shows.
   Only the latest area waits in the queue, and walking back into the area already on
   screen cancels it.
+- Redundant banners are skipped. Leaving a subzone back into the zone itself
+  (Wetlands, then Menethil Bay, then Wetlands) shows nothing the third time, because you
+  never left Wetlands. A banner that showed in the last 30 seconds is also skipped, so
+  walking along a border doesn't keep repeating it. The 30 seconds are counted per area,
+  not across all banners. A discovery always gets its banner, even one these rules would
+  skip. `/zonebanner debug` prints each skip.
 - Discoveries come from the `SYSMSG` and `UI_INFO_MESSAGE` events (on Forever they show green,
   which points to `SYSMSG`). They're recognised by their text,
   matched against the localized `ERR_ZONE_EXPLORED` / `ERR_ZONE_EXPLORED_XP` strings
@@ -54,7 +60,7 @@ Options:
 ```bash
 python <skill>/scripts/check_addon.py .
 luacheck .
-luajit <skill>/scripts/mini_busted.lua tests/wow_stubs.lua tests/DB_spec.lua tests/Discovery_spec.lua
+luajit <skill>/scripts/mini_busted.lua tests/wow_stubs.lua tests/*_spec.lua
 luajit <skill>/scripts/smoke_load.lua
 ```
 
@@ -80,4 +86,7 @@ luajit <skill>/scripts/smoke_load.lua
    messages (for example `/afk`) should still show.
    If the discovery line never shows, run `/zonebanner debug`, walk into a new area, and
    send me the lines it prints.
-10. Afterwards, check `Logs/taint.log` for any `ZoneBanner` lines.
+10. **Repeats:** ride from the open Wetlands into Menethil Bay and back out. You should
+    see "Wetlands" once and "Menethil Bay" once, with no second "Wetlands". Walk back and
+    forth over the Menethil Bay border: no repeats for 30 seconds.
+11. Afterwards, check `Logs/taint.log` for any `ZoneBanner` lines.

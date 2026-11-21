@@ -242,6 +242,7 @@ end
 Display = function(title, subtitle, detail, onDetailShown) -- check-ignore: global-write forward-declared local
 	frame = frame or Build()
 	currentTitle, currentSub = title, subtitle
+	ns.AreaFilter.MarkShown(title, subtitle, GetTime())
 	Layout(subtitle, title, detail)
 	if detail then
 		RunShown(onDetailShown)
@@ -282,35 +283,6 @@ function Banner.Show(title, subtitle)
 	pendingDetail, pendingDetailShown = TakeStash(title, subtitle)
 end
 
--- Attach a discovery line ("Discovered · +120 XP") to the banner for `name`.
--- onShown runs once the line is actually on screen (used to hide Blizzard's copy).
--- If no banner for that area exists yet, it waits a few seconds for one.
-function Banner.AddDiscovery(name, detail, onShown)
-	if type(name) ~= "string" or name == "" or type(detail) ~= "string" then
-		return
-	end
-	if frame and frame:IsShown() and MatchesArea(name, currentTitle, currentSub) then
-		Layout(currentSub, currentTitle, detail)
-		RunShown(onShown)
-	elseif pendingTitle and MatchesArea(name, pendingTitle, pendingSub) then
-		pendingDetail, pendingDetailShown = detail, onShown
-	else
-		stashName, stashDetail, stashShown, stashTime = name, detail, onShown, GetTime()
-	end
-end
-
-function Banner.Test()
-	local zone, subzone = ns.Compat.GetZoneNames()
-	if zone and subzone ~= "" and subzone ~= zone then
-		Banner.Show(subzone, zone)
-		return subzone
-	end
-	Banner.Show("Trade District", "Stormwind City")
-	return "Trade District"
-end
-
--- Deciding ------------------------------------------------------------------------
-
 -- Returns title, subtitle for the current location, or nil if no banner should show.
 local function CurrentBanner()
 	local profile = ns.db and ns.db.profile
@@ -330,6 +302,56 @@ local function CurrentBanner()
 	return zone, nil
 end
 
+-- A banner for where you are was skipped as redundant: anything still waiting in the
+-- queue is for a place you already left, so drop it (unless it is for right here).
+function Banner.DropPending(title, subtitle)
+	if pendingTitle == title and pendingSub == subtitle then
+		return
+	end
+	pendingTitle, pendingSub, pendingDetail, pendingDetailShown = nil, nil, nil, nil
+end
+
+-- True if a fresh discovery is waiting for this banner.
+function Banner.HasStash(title, subtitle)
+	return stashName ~= nil and GetTime() - stashTime <= STASH_SECONDS and MatchesArea(stashName, title, subtitle)
+end
+
+-- Attach a discovery line ("Discovered · +120 XP") to the banner for `name`.
+-- onShown runs once the line is actually on screen (used to hide Blizzard's copy).
+-- If no banner for that area exists yet, it waits a few seconds for one.
+function Banner.AddDiscovery(name, detail, onShown)
+	if type(name) ~= "string" or name == "" or type(detail) ~= "string" then
+		return
+	end
+	if frame and frame:IsShown() and MatchesArea(name, currentTitle, currentSub) then
+		Layout(currentSub, currentTitle, detail)
+		RunShown(onShown)
+	elseif pendingTitle and MatchesArea(name, pendingTitle, pendingSub) then
+		pendingDetail, pendingDetailShown = detail, onShown
+	else
+		stashName, stashDetail, stashShown, stashTime = name, detail, onShown, GetTime()
+		-- A discovery is a first visit, so it always earns a banner, even one the
+		-- repeat filter skipped or one Blizzard never asked for. If we are already
+		-- standing in that area, show it now (it picks up the stash).
+		local title, subtitle = CurrentBanner()
+		if title and MatchesArea(name, title, subtitle) then
+			Banner.Show(title, subtitle)
+		end
+	end
+end
+
+function Banner.Test()
+	local zone, subzone = ns.Compat.GetZoneNames()
+	if zone and subzone ~= "" and subzone ~= zone then
+		Banner.Show(subzone, zone)
+		return subzone
+	end
+	Banner.Show("Trade District", "Stormwind City")
+	return "Trade District"
+end
+
+-- Deciding ------------------------------------------------------------------------
+
 local pending = false
 local suppressed = {} -- Blizzard frames we hid while deciding
 
@@ -345,7 +367,15 @@ local function Evaluate()
 	local title, subtitle = CurrentBanner()
 	if title then
 		wipe(suppressed) -- keep Blizzard's text hidden; ours replaces it
-		Banner.Show(title, subtitle)
+		local show, reason = ns.AreaFilter.Check(title, subtitle, GetTime())
+		if show or Banner.HasStash(title, subtitle) then
+			Banner.Show(title, subtitle) -- a waiting discovery overrides the filter
+		else
+			if ns.debug then
+				ns.Print("Skipped %s (%s)", title, reason)
+			end
+			Banner.DropPending(title, subtitle)
+		end
 	else
 		RestoreBlizzard()
 	end
