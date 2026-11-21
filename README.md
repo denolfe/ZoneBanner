@@ -9,6 +9,8 @@ Built for WoW: Forever (Interface 16001). It should also work on retail Midnight
 ## Usage
 - `/zonebanner` opens the options (also in the Addon Compartment).
 - `/zonebanner test` shows a test banner.
+- `/zonebanner test discovery` shows a test banner and sends a fake "Discovered" message
+  through the same path a real one takes.
 - `/zonebanner debug` prints every system and info message to chat, marked as a discovery or
   ignored, until you run it again or reload. Use it if a discovery doesn't reach the banner.
 
@@ -18,10 +20,9 @@ Options:
 - **Hide the default zone text**
 - **Show discoveries in the banner.** On by default. Adds a small "Discovered · +120 XP"
   line under the area name.
-- **Hide the yellow discovery message.** Off by default. Clears Blizzard's copy at the
-  top of the screen once ours shows, but only if no other message arrived in the last
-  3 seconds. That frame can only be cleared all at once, so this keeps it from wiping
-  a real error.
+- **Hide Blizzard's discovery message.** Off by default. Stops the green "Discovered" line
+  at the top of the screen. Other system messages still show as normal. If the banner
+  doesn't show a discovery within 4 seconds, Blizzard's line is shown after all.
 - **Banner duration**
 
 ## How it works
@@ -40,6 +41,11 @@ Options:
   (plus English fallbacks),
   and attached to the banner for the same area. A discovery that arrives just before
   its banner waits up to 3 seconds for it.
+- Hiding Blizzard's discovery line works by taking over one event. `UIErrorsFrame` stops
+  listening to `SYSMSG`, and the addon hands every system message back to it with the same
+  call Blizzard uses (`CheckAddMessage`), except a discovery the banner shows. Turning the
+  option off gives the event back. One side effect: other addons that hook
+  `UIErrorsFrame`'s `SYSMSG` handling won't see those messages while the option is on.
 - The banner is its own frame. It ignores the mouse and is skipped by gamepad focus.
 - If a patch removes `FadingFrame_Show`, the addon falls back to the zone events. It then
   can't hide the default text.
@@ -68,9 +74,10 @@ luajit <skill>/scripts/smoke_load.lua
 8. **`/reload` mid-combat**, then **upgrade** (edit `ZoneBannerDB` in WTF to garbage values
    and reload). Settings should self-heal.
 9. **Discovery:** walk into an area you haven't explored yet, using a low-level character
-   or a fresh zone. The banner should show a "Discovered · +XP" line. With "Hide the
-   yellow discovery message" off, Blizzard's line still shows above. Turn it on and try
-   another undiscovered area: the yellow line should vanish once the banner appears.
+   or a fresh zone. The banner should show a "Discovered · +XP" line. With "Hide
+   Blizzard's discovery message" off, Blizzard's green line still shows above. Turn it on
+   and try another undiscovered area: the green line should never appear. Other system
+   messages (for example `/afk`) should still show.
    If the discovery line never shows, run `/zonebanner debug`, walk into a new area, and
    send me the lines it prints.
 10. Afterwards, check `Logs/taint.log` for any `ZoneBanner` lines.

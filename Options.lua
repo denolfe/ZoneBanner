@@ -17,8 +17,8 @@ local CHECKBOXES = {
 	{ key = "showDiscovery", label = "Show discoveries in the banner", tip = "Adds \"Discovered · +XP\" under the area name." },
 	{
 		key = "hideBlizzardDiscovery",
-		label = "Hide the yellow discovery message",
-		tip = "Clears Blizzard's copy, but only when no other message is showing.",
+		label = "Hide Blizzard's discovery message",
+		tip = "Stops the green \"Discovered\" line. Other system messages still show.",
 	},
 }
 
@@ -48,6 +48,7 @@ local function BuildPanel()
 		end)
 		check:SetScript("OnClick", function(self)
 			ns.db.profile[info.key] = self:GetChecked() and true or false
+			ns.Discovery.UpdateTakeover()
 		end)
 		anchor = check
 	end

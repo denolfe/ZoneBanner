@@ -21,6 +21,11 @@ local min, max = math.min, math.max
 local WIDTH = 418 -- EventToastManagerFrame fixedWidth
 local TOP_OFFSET = -190 -- EventToastManagerFrame anchor
 local PADDING = 14
+local MIN_HEIGHT = 64 -- EventToastManager's fixedHeight for the level-up toast
+local SUB_GAP, DETAIL_GAP = 3, 4
+-- The title font's line box includes room for descenders, which most area names don't
+-- use, so mathematically centred caps look high. Nudge the text block down a little.
+local OPTICAL_NUDGE = 2
 local FADE_IN, FADE_OUT, GROW = 0.5, 1.0, 0.5
 -- Queueing: when a new banner arrives while one is showing, the current one stays
 -- readable for at least MIN_VISIBLE seconds, then fades out quickly (HANDOFF_FADE)
@@ -191,7 +196,9 @@ local function TakeStash(title, subtitle)
 	return nil
 end
 
--- Sets the texts and stacks subtitle / title / detail, resizing the banner.
+-- Sets the texts and stacks subtitle / title / detail, centred between the bars.
+-- The title is anchored to the frame's centre, so a single line is centred no matter
+-- what GetStringHeight reports; measured heights only shift it for the extra lines.
 local function Layout(subtitle, title, detail)
 	local hasSub = subtitle ~= nil
 	local hasDetail = detail ~= nil
@@ -204,19 +211,24 @@ local function Layout(subtitle, title, detail)
 	frame.Detail:SetText(detail or "")
 	frame.Detail:SetShown(hasDetail)
 
-	local height = PADDING * 2 + (frame.Title:GetStringHeight() or 40)
+	local titleHeight = frame.Title:GetStringHeight() or 0
+	if titleHeight <= 0 then
+		titleHeight = 32
+	end
+	local above, below = 0, 0
 	if hasSub then
-		frame.SubTitle:SetPoint("TOP", frame, "TOP", 0, -PADDING)
-		frame.Title:SetPoint("TOP", frame.SubTitle, "BOTTOM", 0, -3)
-		height = height + (frame.SubTitle:GetStringHeight() or 18) + 3
-	else
-		frame.Title:SetPoint("TOP", frame, "TOP", 0, -PADDING)
+		local h = frame.SubTitle:GetStringHeight() or 0
+		above = (h > 0 and h or 18) + SUB_GAP
+		frame.SubTitle:SetPoint("BOTTOM", frame.Title, "TOP", 0, SUB_GAP)
 	end
 	if hasDetail then
-		frame.Detail:SetPoint("TOP", frame.Title, "BOTTOM", 0, -4)
-		height = height + (frame.Detail:GetStringHeight() or 14) + 4
+		local h = frame.Detail:GetStringHeight() or 0
+		below = (h > 0 and h or 14) + DETAIL_GAP
+		frame.Detail:SetPoint("TOP", frame.Title, "BOTTOM", 0, -DETAIL_GAP)
 	end
-	frame:SetHeight(height)
+	-- Centre the whole block: shift the title by half the difference above vs below.
+	frame.Title:SetPoint("CENTER", frame, "CENTER", 0, (below - above) / 2 - OPTICAL_NUDGE)
+	frame:SetHeight(math.max(MIN_HEIGHT, titleHeight + above + below + PADDING * 2))
 end
 
 local function RunShown(onShown)
@@ -291,9 +303,10 @@ function Banner.Test()
 	local zone, subzone = ns.Compat.GetZoneNames()
 	if zone and subzone ~= "" and subzone ~= zone then
 		Banner.Show(subzone, zone)
-	else
-		Banner.Show("Trade District", "Stormwind City")
+		return subzone
 	end
+	Banner.Show("Trade District", "Stormwind City")
+	return "Trade District"
 end
 
 -- Deciding ------------------------------------------------------------------------

@@ -101,63 +101,109 @@ end
 
 -- Live wiring ------------------------------------------------------------------------
 
--- UIErrorsFrame (a C MessageFrame) can't remove a single line, so hiding Blizzard's
--- copy means Clear(). To avoid wiping a real error, we only clear when the
--- discovery was the only message the frame received recently.
-local QUIET_WINDOW = 3 -- UIErrorsFrame displayDuration 2 + fadeDuration 0.5, plus margin
-local lastOtherMessage = -math.huge
-local GetTime = GetTime
+-- Hiding Blizzard's copy. UIErrorsFrame draws SYSMSG with a plain
+-- CheckAddMessage(message, r, g, b, 1.0) (Blizzard_UIErrorsFrame/Mainline/
+-- UIErrorsFrame.lua). With the option on, we take that one event over: UIErrorsFrame
+-- stops listening to SYSMSG, and we pass every message on to it unchanged, except a
+-- discovery our banner is about to show. Anything unexpected on our side (a secret
+-- value, an error, the banner never showing) falls back to passing the message on.
+local FALLBACK_DELAY = 4 -- longer than the banner queue (about 2 s) and the stash (3 s)
+local takenOver = false
 
-local function MaybeHideBlizzardLine()
-	local profile = ns.db and ns.db.profile
-	if not (profile and profile.hideBlizzardDiscovery) then
-		return
-	end
-	local errors = UIErrorsFrame
-	if not (errors and errors.Clear) then
-		return
-	end
-	-- Defer a frame: UIErrorsFrame may handle this same event after us.
-	C_Timer.After(0, function()
-		if GetTime() - lastOtherMessage >= QUIET_WINDOW then
-			errors:Clear()
-		end
-	end)
+local function CanTakeOver(errors)
+	return errors
+		and type(errors.IsEventRegistered) == "function"
+		and type(errors.RegisterEvent) == "function"
+		and type(errors.UnregisterEvent) == "function"
+		and type(errors.CheckAddMessage) == "function"
 end
 
-local function HandleMessage(event, message)
-	if ns.Compat.IsSecret(message) then
-		return
+local function PassOn(message, r, g, b)
+	local errors = UIErrorsFrame
+	if errors and type(errors.CheckAddMessage) == "function" then
+		errors:CheckAddMessage(message, r, g, b, 1.0)
 	end
-	if ns.debug then
-		ns.Print("%s: %s -> %s", event, tostring(message), Discovery.Parse(message) and "discovery" or "ignored")
+end
+
+-- Call whenever an option changes. Takes SYSMSG over, or hands it back.
+function Discovery.UpdateTakeover()
+	local errors = UIErrorsFrame
+	if not CanTakeOver(errors) then
+		return
 	end
 	local profile = ns.db and ns.db.profile
+	local want = (profile and profile.enabled and profile.showDiscovery and profile.hideBlizzardDiscovery) and true
+		or false
+	if want == takenOver then
+		return
+	end
+	if want then
+		if not errors:IsEventRegistered("SYSMSG") then
+			return -- something else already changed it; leave it alone
+		end
+		errors:UnregisterEvent("SYSMSG")
+	else
+		errors:RegisterEvent("SYSMSG")
+	end
+	takenOver = want
+end
+
+function Discovery.IsTakenOver()
+	return takenOver
+end
+
+-- Returns true if the message is a discovery handed to the banner. With `original`
+-- (message, r, g, b), the caller swallowed Blizzard's copy, so it is passed on late
+-- if the banner never shows it.
+local function HandleMessage(event, message, original)
+	if ns.Compat.IsSecret(message) then
+		return false
+	end
 	local name, xp = Discovery.Parse(message)
-	if not name then
-		lastOtherMessage = GetTime()
-		return
+	if ns.debug then
+		ns.Print("%s: %s -> %s", event, tostring(message), name and "discovery" or "ignored")
 	end
-	if not (profile and profile.enabled and profile.showDiscovery) then
-		return
+	local profile = ns.db and ns.db.profile
+	if not (name and profile and profile.enabled and profile.showDiscovery) then
+		return false
 	end
-	-- MaybeHideBlizzardLine runs only once our copy is actually on screen.
-	ns.Banner.AddDiscovery(name, Discovery.DetailText(xp), MaybeHideBlizzardLine)
+	if not original then
+		ns.Banner.AddDiscovery(name, Discovery.DetailText(xp))
+		return true
+	end
+	local shown = false
+	ns.Banner.AddDiscovery(name, Discovery.DetailText(xp), function()
+		shown = true
+	end)
+	C_Timer.After(FALLBACK_DELAY, function()
+		if not shown then
+			PassOn(original[1], original[2], original[3], original[4])
+		end
+	end)
+	return true
 end
 
 local function OnInfoMessage(event, _, message) -- (messageType, message)
 	HandleMessage(event, message)
 end
 
-local function OnSystemMessage(event, message) -- (message, r, g, b)
-	HandleMessage(event, message)
+local function OnSystemMessage(event, message, r, g, b) -- (message, r, g, b)
+	if not takenOver then
+		HandleMessage(event, message)
+		return
+	end
+	local ok, handled = pcall(HandleMessage, event, message, { message, r, g, b })
+	if not (ok and handled) then
+		PassOn(message, r, g, b)
+	end
+	if not ok then
+		geterrorhandler()(handled)
+	end
 end
 
-local function OnErrorMessage(event, _, message)
-	if ns.debug and not ns.Compat.IsSecret(message) then
-		ns.Print("%s: %s -> ignored", event, tostring(message))
-	end
-	lastOtherMessage = GetTime()
+-- For tests and `/zonebanner test discovery`: feeds a message in as if it were SYSMSG.
+function Discovery.Simulate(message, r, g, b)
+	OnSystemMessage("SYSMSG", message, r, g, b)
 end
 
 function Discovery.Init()
@@ -165,5 +211,5 @@ function Discovery.Init()
 	Discovery.SetFormats(ERR_ZONE_EXPLORED_XP, ERR_ZONE_EXPLORED, fallback[1], fallback[2])
 	ns.On("UI_INFO_MESSAGE", OnInfoMessage)
 	ns.On("SYSMSG", OnSystemMessage)
-	ns.On("UI_ERROR_MESSAGE", OnErrorMessage)
+	Discovery.UpdateTakeover()
 end

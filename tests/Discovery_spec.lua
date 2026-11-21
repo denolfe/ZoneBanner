@@ -68,3 +68,100 @@ describe("Discovery.Parse", function()
 		assert.are.equal("Discovered", Discovery.DetailText(nil))
 	end)
 end)
+
+describe("Discovery takeover of Blizzard's SYSMSG line", function()
+	local Discovery, ns, errors, timers, attached
+
+	local function RunTimers()
+		local list = timers
+		timers = {}
+		for _, fn in ipairs(list) do
+			fn()
+		end
+	end
+
+	before_each(function()
+		timers, attached = {}, {}
+		errors = { registered = { SYSMSG = true }, lines = {} }
+		function errors:IsEventRegistered(e) return self.registered[e] or false end
+		function errors:RegisterEvent(e) self.registered[e] = true end
+		function errors:UnregisterEvent(e) self.registered[e] = nil end
+		function errors:CheckAddMessage(m) self.lines[#self.lines + 1] = m end
+		_G.UIErrorsFrame = errors
+		_G.C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
+
+		ns = {
+			L = setmetatable({}, { __index = function(_, k) return k end }),
+			Compat = { IsSecret = function() return false end },
+			On = function() return true end,
+			db = { profile = { enabled = true, showDiscovery = true, hideBlizzardDiscovery = true } },
+			Banner = {
+				show = true,
+				AddDiscovery = function(name, _, onShown)
+					attached[#attached + 1] = name
+					if ns.Banner.show and onShown then
+						onShown()
+					end
+				end,
+			},
+		}
+		LoadAddonFile("Discovery.lua", ns)
+		Discovery = ns.Discovery
+		Discovery.Init()
+		Discovery.SetFormats("Discovered: %s")
+	end)
+
+	it("takes SYSMSG from UIErrorsFrame when the option is on", function()
+		assert.is_true(Discovery.IsTakenOver())
+		assert.is_nil(errors.registered.SYSMSG)
+	end)
+
+	it("swallows a discovery the banner shows", function()
+		Discovery.Simulate("Discovered: Goldshire", 0, 1, 0)
+		RunTimers()
+		assert.are.same({ "Goldshire" }, attached)
+		assert.are.same({}, errors.lines)
+	end)
+
+	it("passes other system messages straight on", function()
+		Discovery.Simulate("You are now away.", 1, 1, 0)
+		assert.are.same({ "You are now away." }, errors.lines)
+	end)
+
+	it("passes a discovery on late if the banner never shows it", function()
+		ns.Banner.show = false
+		Discovery.Simulate("Discovered: Goldshire", 0, 1, 0)
+		assert.are.same({}, errors.lines)
+		RunTimers()
+		assert.are.same({ "Discovered: Goldshire" }, errors.lines)
+	end)
+
+	it("passes the message on if handling it errors", function()
+		ns.Banner.AddDiscovery = function() error("boom") end
+		local caught
+		local old = _G.geterrorhandler
+		_G.geterrorhandler = function() return function(e) caught = e end end
+		Discovery.Simulate("Discovered: Goldshire", 0, 1, 0)
+		_G.geterrorhandler = old
+		assert.are.same({ "Discovered: Goldshire" }, errors.lines)
+		assert.are.equal("string", type(caught))
+	end)
+
+	it("hands SYSMSG back when the option is turned off", function()
+		ns.db.profile.hideBlizzardDiscovery = false
+		Discovery.UpdateTakeover()
+		assert.is_true(errors.registered.SYSMSG)
+		assert.is_false(Discovery.IsTakenOver())
+		Discovery.Simulate("Discovered: Goldshire", 0, 1, 0)
+		assert.are.same({}, errors.lines) -- Blizzard draws it itself now
+	end)
+
+	it("leaves SYSMSG alone if something else already unregistered it", function()
+		ns.db.profile.hideBlizzardDiscovery = false
+		Discovery.UpdateTakeover()
+		errors.registered.SYSMSG = nil
+		ns.db.profile.hideBlizzardDiscovery = true
+		Discovery.UpdateTakeover()
+		assert.is_false(Discovery.IsTakenOver())
+	end)
+end)
