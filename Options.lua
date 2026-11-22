@@ -18,7 +18,7 @@ local CHECKBOXES = {
 	{
 		key = "hideBlizzardDiscovery",
 		label = "Hide Blizzard's discovery message",
-		tip = "Stops the green \"Discovered\" line. Other system messages still show.",
+		tip = "Stops the on-screen \"Discovered\" line. Other messages still show.",
 	},
 }
 

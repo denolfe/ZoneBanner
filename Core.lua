@@ -98,7 +98,7 @@ local function HandleSlash(input)
 	elseif command == "test discovery" then
 		-- Runs the whole path: a fake client message through the parser, then the banner.
 		local area = ns.Banner.Test()
-		ns.Discovery.Simulate((ERR_ZONE_EXPLORED or "Discovered: %s"):format(area), 0, 1, 0)
+		ns.Discovery.Simulate((ERR_ZONE_EXPLORED or "Discovered: %s"):format(area))
 	elseif command == "debug" then
 		ns.debug = not ns.debug -- session only, not saved
 		ns.Print(ns.debug and "Debug on: zone and discovery messages are printed to chat." or "Debug off.")

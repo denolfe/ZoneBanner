@@ -1,19 +1,16 @@
 local _, ns = ...
 local L = ns.L
 
--- Folds Blizzard's "Discovered Goldshire: 120 experience gained" info message into
--- the banner as a small detail line.
+-- Folds Blizzard's "Discovered: Goldshire" message into the banner as a small
+-- "Discovered" line under the area name (with the XP when the message has it).
 --
--- The message arrives as UI_INFO_MESSAGE (messageType, message) and is drawn by
--- UIErrorsFrame (Blizzard_UIErrorsFrame/Mainline/UIErrorsFrame.lua, forever branch).
+-- What Forever sends (seen in game with /zonebanner debug):
+--   UI_INFO_MESSAGE  "Discovered: Tranquil Gardens Cemetery"   (on screen, UIErrorsFrame)
+--   CHAT_MSG_SYSTEM  "Discovered Tranquil Gardens Cemetery: 230 experience gained"
+-- Only the on-screen copy is used; the chat copy is left alone.
 -- Detection is by message text, built from the localized ERR_ZONE_EXPLORED /
--- ERR_ZONE_EXPLORED_XP format strings, so it works in every locale and doesn't
--- depend on the numeric message-type constants (unverified on Forever).
---
--- The text is not built anywhere in Blizzard's Lua (checked the forever branch):
--- it comes from the client. In game on Forever it shows green above the banner,
--- which matches UIErrorsFrame's SYSMSG path (message, r, g, b), so we parse both
--- SYSMSG and UI_INFO_MESSAGE. `/zonebanner debug` prints what actually arrives.
+-- ERR_ZONE_EXPLORED_XP format strings (plus English fallbacks), so it doesn't depend
+-- on numeric message-type constants. SYSMSG is watched too, in case it moves there.
 
 local Discovery = {}
 ns.Discovery = Discovery
@@ -101,61 +98,67 @@ end
 
 -- Live wiring ------------------------------------------------------------------------
 
--- Hiding Blizzard's copy. UIErrorsFrame draws SYSMSG with a plain
--- CheckAddMessage(message, r, g, b, 1.0) (Blizzard_UIErrorsFrame/Mainline/
--- UIErrorsFrame.lua). With the option on, we take that one event over: UIErrorsFrame
--- stops listening to SYSMSG, and we pass every message on to it unchanged, except a
--- discovery our banner is about to show. Anything unexpected on our side (a secret
--- value, an error, the banner never showing) falls back to passing the message on.
+-- Hiding Blizzard's copy. On Forever the on-screen line arrives as UI_INFO_MESSAGE
+-- (seen in game with /zonebanner debug); SYSMSG is covered too in case another
+-- client or locale routes it there. With the option on, UIErrorsFrame stops
+-- listening to those two events, and we hand every message back to UIErrorsFrame's
+-- own OnEvent script, so colour, sound and flashing stay exactly Blizzard's. The
+-- only exception is a discovery our banner shows. Anything unexpected on our side (a
+-- secret value, an error, the banner never showing) falls back to passing it on.
+local TAKEN_EVENTS = { "UI_INFO_MESSAGE", "SYSMSG" }
 local FALLBACK_DELAY = 4 -- longer than the banner queue (about 2 s) and the stash (3 s)
-local takenOver = false
+local taken = {} -- event -> true while UIErrorsFrame doesn't get it directly
+
+local function BlizzardHandler(errors)
+	local handler = errors and type(errors.GetScript) == "function" and errors:GetScript("OnEvent")
+	return type(handler) == "function" and handler or nil
+end
 
 local function CanTakeOver(errors)
-	return errors
+	return BlizzardHandler(errors)
 		and type(errors.IsEventRegistered) == "function"
 		and type(errors.RegisterEvent) == "function"
 		and type(errors.UnregisterEvent) == "function"
-		and type(errors.CheckAddMessage) == "function"
 end
 
-local function PassOn(message, r, g, b)
+-- Runs Blizzard's own handler, as if UIErrorsFrame had received the event itself.
+local function PassOn(event, ...)
 	local errors = UIErrorsFrame
-	if errors and type(errors.CheckAddMessage) == "function" then
-		errors:CheckAddMessage(message, r, g, b, 1.0)
+	local handler = BlizzardHandler(errors)
+	if handler then
+		handler(errors, event, ...)
 	end
 end
 
--- Call whenever an option changes. Takes SYSMSG over, or hands it back.
+-- Call whenever an option changes. Takes the events over, or hands them back.
 function Discovery.UpdateTakeover()
 	local errors = UIErrorsFrame
 	if not CanTakeOver(errors) then
 		return
 	end
 	local profile = ns.db and ns.db.profile
-	local want = (profile and profile.enabled and profile.showDiscovery and profile.hideBlizzardDiscovery) and true
-		or false
-	if want == takenOver then
-		return
-	end
-	if want then
-		if not errors:IsEventRegistered("SYSMSG") then
-			return -- something else already changed it; leave it alone
+	local want = profile and profile.enabled and profile.showDiscovery and profile.hideBlizzardDiscovery
+	for _, event in ipairs(TAKEN_EVENTS) do
+		if want and not taken[event] then
+			-- Only if Blizzard still has it; if something else changed it, leave it alone.
+			if errors:IsEventRegistered(event) then
+				errors:UnregisterEvent(event)
+				taken[event] = true
+			end
+		elseif not want and taken[event] then
+			errors:RegisterEvent(event)
+			taken[event] = nil
 		end
-		errors:UnregisterEvent("SYSMSG")
-	else
-		errors:RegisterEvent("SYSMSG")
 	end
-	takenOver = want
 end
 
-function Discovery.IsTakenOver()
-	return takenOver
+function Discovery.IsTakenOver(event)
+	return taken[event] or false
 end
 
--- Returns true if the message is a discovery handed to the banner. With `original`
--- (message, r, g, b), the caller swallowed Blizzard's copy, so it is passed on late
--- if the banner never shows it.
-local function HandleMessage(event, message, original)
+-- Returns true if the message is a discovery handed to the banner. With `passOn`,
+-- the caller swallowed Blizzard's copy; it is called late if the banner never shows it.
+local function HandleMessage(event, message, passOn)
 	if ns.Compat.IsSecret(message) then
 		return false
 	end
@@ -167,7 +170,7 @@ local function HandleMessage(event, message, original)
 	if not (name and profile and profile.enabled and profile.showDiscovery) then
 		return false
 	end
-	if not original then
+	if not passOn then
 		ns.Banner.AddDiscovery(name, Discovery.DetailText(xp))
 		return true
 	end
@@ -177,39 +180,48 @@ local function HandleMessage(event, message, original)
 	end)
 	C_Timer.After(FALLBACK_DELAY, function()
 		if not shown then
-			PassOn(original[1], original[2], original[3], original[4])
+			passOn()
 		end
 	end)
 	return true
 end
 
-local function OnInfoMessage(event, _, message) -- (messageType, message)
-	HandleMessage(event, message)
-end
-
-local function OnSystemMessage(event, message, r, g, b) -- (message, r, g, b)
-	if not takenOver then
+-- UI_INFO_MESSAGE is (messageType, message); SYSMSG is (message, r, g, b).
+local function OnErrorsFrameEvent(event, ...)
+	local message
+	if event == "UI_INFO_MESSAGE" then
+		message = select(2, ...)
+	else
+		message = ...
+	end
+	if not taken[event] then
 		HandleMessage(event, message)
 		return
 	end
-	local ok, handled = pcall(HandleMessage, event, message, { message, r, g, b })
+	local args = { n = select("#", ...), ... }
+	local function passOn()
+		PassOn(event, unpack(args, 1, args.n))
+	end
+	local ok, handled = pcall(HandleMessage, event, message, passOn)
 	if not (ok and handled) then
-		PassOn(message, r, g, b)
+		passOn()
 	end
 	if not ok then
 		geterrorhandler()(handled)
 	end
 end
 
--- For tests and `/zonebanner test discovery`: feeds a message in as if it were SYSMSG.
-function Discovery.Simulate(message, r, g, b)
-	OnSystemMessage("SYSMSG", message, r, g, b)
+-- For tests and `/zonebanner test discovery`: feeds a message in the way Forever
+-- sends it (UI_INFO_MESSAGE).
+function Discovery.Simulate(message)
+	OnErrorsFrameEvent("UI_INFO_MESSAGE", 0, message)
 end
 
 function Discovery.Init()
 	local fallback = Discovery.FALLBACK_FORMATS
 	Discovery.SetFormats(ERR_ZONE_EXPLORED_XP, ERR_ZONE_EXPLORED, fallback[1], fallback[2])
-	ns.On("UI_INFO_MESSAGE", OnInfoMessage)
-	ns.On("SYSMSG", OnSystemMessage)
+	for _, event in ipairs(TAKEN_EVENTS) do
+		ns.On(event, OnErrorsFrameEvent)
+	end
 	Discovery.UpdateTakeover()
 end

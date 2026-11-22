@@ -20,7 +20,7 @@ Options:
 - **Hide the default zone text**
 - **Show discoveries in the banner.** On by default. Adds a small "Discovered · +120 XP"
   line under the area name.
-- **Hide Blizzard's discovery message.** Off by default. Stops the green "Discovered" line
+- **Hide Blizzard's discovery message.** Off by default. Stops the on-screen "Discovered" line
   at the top of the screen. Other system messages still show as normal. If the banner
   doesn't show a discovery within 4 seconds, Blizzard's line is shown after all.
 - **Banner duration**
@@ -41,17 +41,18 @@ Options:
   walking along a border doesn't keep repeating it. The 30 seconds are counted per area,
   not across all banners. A discovery always gets its banner, even one these rules would
   skip. `/zonebanner debug` prints each skip.
-- Discoveries come from the `SYSMSG` and `UI_INFO_MESSAGE` events (on Forever they show green,
-  which points to `SYSMSG`). They're recognised by their text,
-  matched against the localized `ERR_ZONE_EXPLORED` / `ERR_ZONE_EXPLORED_XP` strings
-  (plus English fallbacks),
-  and attached to the banner for the same area. A discovery that arrives just before
-  its banner waits up to 3 seconds for it.
-- Hiding Blizzard's discovery line works by taking over one event. `UIErrorsFrame` stops
-  listening to `SYSMSG`, and the addon hands every system message back to it with the same
-  call Blizzard uses (`CheckAddMessage`), except a discovery the banner shows. Turning the
-  option off gives the event back. One side effect: other addons that hook
-  `UIErrorsFrame`'s `SYSMSG` handling won't see those messages while the option is on.
+- Discoveries are recognised by their text, matched against the localized
+  `ERR_ZONE_EXPLORED` / `ERR_ZONE_EXPLORED_XP` strings (plus English fallbacks). On
+  Forever the on-screen line arrives as `UI_INFO_MESSAGE` ("Discovered: Tranquil Gardens
+  Cemetery"). `SYSMSG` is watched too. The chat copy with the XP is left alone. A
+  discovery that arrives just before its banner waits up to
+  3 seconds for it.
+- Hiding Blizzard's discovery line works by taking over two events. `UIErrorsFrame` stops
+  listening to `UI_INFO_MESSAGE` and `SYSMSG`, and the addon hands every one of those
+  messages to `UIErrorsFrame`'s own event handler, so colour, sound and flashing stay
+  Blizzard's. The only exception is a discovery the banner shows. Turning the option off
+  gives the events back. One side effect: other addons that hook `UIErrorsFrame` for
+  those events won't see them while the option is on.
 - The banner is its own frame. It ignores the mouse and is skipped by gamepad focus.
 - If a patch removes `FadingFrame_Show`, the addon falls back to the zone events. It then
   can't hide the default text.
@@ -80,10 +81,10 @@ luajit <skill>/scripts/smoke_load.lua
 8. **`/reload` mid-combat**, then **upgrade** (edit `ZoneBannerDB` in WTF to garbage values
    and reload). Settings should self-heal.
 9. **Discovery:** walk into an area you haven't explored yet, using a low-level character
-   or a fresh zone. The banner should show a "Discovered · +XP" line. With "Hide
-   Blizzard's discovery message" off, Blizzard's green line still shows above. Turn it on
-   and try another undiscovered area: the green line should never appear. Other system
-   messages (for example `/afk`) should still show.
+   or a fresh zone. The banner should show a "Discovered" line (with "+XP" if the message has it). With "Hide
+   Blizzard's discovery message" off, Blizzard's line still shows above. Turn it on
+   and try another undiscovered area: the line should never appear. Other on-screen
+   messages (for example accepting a quest, or `/afk`) should still show, with their sounds.
    If the discovery line never shows, run `/zonebanner debug`, walk into a new area, and
    send me the lines it prints.
 10. **Repeats:** ride from the open Wetlands into Menethil Bay and back out. You should
