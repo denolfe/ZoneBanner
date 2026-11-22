@@ -18,7 +18,7 @@ Options:
 - **Enable**
 - **Only in cities and towns.** Off by default. Uses the rested state, so inns count too.
 - **Hide the default zone text**
-- **Show discoveries in the banner.** On by default. Adds a small "Discovered · +120 XP"
+- **Show discoveries in the banner.** On by default. Adds a small "Discovered"
   line under the area name.
 - **Hide Blizzard's discovery message.** Off by default. Stops the on-screen "Discovered" line
   at the top of the screen. Other system messages still show as normal. If the banner
@@ -81,7 +81,7 @@ luajit <skill>/scripts/smoke_load.lua
 8. **`/reload` mid-combat**, then **upgrade** (edit `ZoneBannerDB` in WTF to garbage values
    and reload). Settings should self-heal.
 9. **Discovery:** walk into an area you haven't explored yet, using a low-level character
-   or a fresh zone. The banner should show a "Discovered" line (with "+XP" if the message has it). With "Hide
+   or a fresh zone. The banner should show a "Discovered" line. With "Hide
    Blizzard's discovery message" off, Blizzard's line still shows above. Turn it on
    and try another undiscovered area: the line should never appear. Other on-screen
    messages (for example accepting a quest, or `/afk`) should still show, with their sounds.

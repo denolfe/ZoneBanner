@@ -2,7 +2,7 @@ local _, ns = ...
 local L = ns.L
 
 -- Folds Blizzard's "Discovered: Goldshire" message into the banner as a small
--- "Discovered" line under the area name (with the XP when the message has it).
+-- "Discovered" line under the area name.
 --
 -- What Forever sends (seen in game with /zonebanner debug):
 --   UI_INFO_MESSAGE  "Discovered: Tranquil Gardens Cemetery"   (on screen, UIErrorsFrame)
@@ -89,10 +89,7 @@ function Discovery.Parse(message)
 end
 
 -- Text for the banner's detail line.
-function Discovery.DetailText(xp)
-	if xp and xp > 0 then
-		return (L["Discovered · +%d XP"]):format(xp)
-	end
+function Discovery.DetailText()
 	return L["Discovered"]
 end
 
@@ -162,7 +159,7 @@ local function HandleMessage(event, message, passOn)
 	if ns.Compat.IsSecret(message) then
 		return false
 	end
-	local name, xp = Discovery.Parse(message)
+	local name = Discovery.Parse(message)
 	if ns.debug then
 		ns.Print("%s: %s -> %s", event, tostring(message), name and "discovery" or "ignored")
 	end
@@ -171,11 +168,11 @@ local function HandleMessage(event, message, passOn)
 		return false
 	end
 	if not passOn then
-		ns.Banner.AddDiscovery(name, Discovery.DetailText(xp))
+		ns.Banner.AddDiscovery(name, Discovery.DetailText())
 		return true
 	end
 	local shown = false
-	ns.Banner.AddDiscovery(name, Discovery.DetailText(xp), function()
+	ns.Banner.AddDiscovery(name, Discovery.DetailText(), function()
 		shown = true
 	end)
 	C_Timer.After(FALLBACK_DELAY, function()

@@ -45,7 +45,7 @@ local elapsedTotal, holdTime, fadeOut = 0, 3, FADE_OUT
 local lineWidth, shadowHeight = WIDTH, 80
 
 -- What is on screen now, and the one waiting (latest wins).
--- detail = optional small line under the title (e.g. "Discovered · +120 XP");
+-- detail = optional small line under the title (e.g. "Discovered");
 -- onDetailShown = callback run once that detail is actually on screen.
 local currentTitle, currentSub
 local pendingTitle, pendingSub, pendingDetail, pendingDetailShown
@@ -316,7 +316,7 @@ function Banner.HasStash(title, subtitle)
 	return stashName ~= nil and GetTime() - stashTime <= STASH_SECONDS and MatchesArea(stashName, title, subtitle)
 end
 
--- Attach a discovery line ("Discovered · +120 XP") to the banner for `name`.
+-- Attach a discovery line ("Discovered") to the banner for `name`.
 -- onShown runs once the line is actually on screen (used to hide Blizzard's copy).
 -- If no banner for that area exists yet, it waits a few seconds for one.
 function Banner.AddDiscovery(name, detail, onShown)

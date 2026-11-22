@@ -64,8 +64,7 @@ describe("Discovery.Parse", function()
 	end)
 
 	it("builds detail text", function()
-		assert.are.equal("Discovered · +120 XP", Discovery.DetailText(120))
-		assert.are.equal("Discovered", Discovery.DetailText(nil))
+		assert.are.equal("Discovered", Discovery.DetailText())
 	end)
 end)
 
@@ -169,6 +168,11 @@ describe("Discovery takeover of Blizzard's on-screen line", function()
 	it("leaves the chat copy with the XP alone", function()
 		Fire("CHAT_MSG_SYSTEM", "Discovered Goldshire: 230 experience gained")
 		assert.are.same({}, attached)
+	end)
+
+	it("shows no XP even when the message has it", function()
+		Fire("SYSMSG", "Discovered Goldshire: 230 experience gained", 1, 1, 0)
+		assert.are.same({ "Goldshire | Discovered" }, attached)
 	end)
 
 	it("hands the events back when the option is turned off", function()
