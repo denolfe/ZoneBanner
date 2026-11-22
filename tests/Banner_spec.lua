@@ -67,6 +67,7 @@ describe("Banner with discoveries and the repeat filter", function()
 			},
 			Gamepad = { Ignore = function() end },
 			Print = function() end,
+			SafeCall = function(fn, ...) return fn(...) end,
 		}
 		LoadAddonFile("AreaFilter.lua", ns)
 		LoadAddonFile("Banner.lua", ns)
@@ -105,6 +106,18 @@ describe("Banner with discoveries and the repeat filter", function()
 		local title, detail = OnScreen()
 		assert.are.equal("Menethil Bay", title)
 		assert.are.equal("Discovered", detail)
+	end)
+
+	it("keeps the first copy's callback when a second copy updates a waiting discovery", function()
+		zone, subzone = "Elsewhere", ""
+		local ran = false
+		ns.Banner.AddDiscovery("Menethil Bay", "Discovered", function() ran = true end)
+		ns.Banner.AddDiscovery("Menethil Bay", "Discovered!")
+		Enter("Wetlands", "Menethil Bay")
+		local title, detail = OnScreen()
+		assert.are.equal("Menethil Bay", title)
+		assert.are.equal("Discovered!", detail)
+		assert.is_true(ran)
 	end)
 
 	it("doesn't force a banner for a discovery somewhere else", function()

@@ -327,8 +327,13 @@ function Banner.AddDiscovery(name, detail, onShown)
 		Layout(currentSub, currentTitle, detail)
 		RunShown(onShown)
 	elseif pendingTitle and MatchesArea(name, pendingTitle, pendingSub) then
-		pendingDetail, pendingDetailShown = detail, onShown
+		-- A second copy of the same discovery (say, on another event) must not lose
+		-- the first copy's callback.
+		pendingDetail, pendingDetailShown = detail, onShown or pendingDetailShown
 	else
+		if stashName == name and not onShown then
+			onShown = stashShown
+		end
 		stashName, stashDetail, stashShown, stashTime = name, detail, onShown, GetTime()
 		-- A discovery is a first visit, so it always earns a banner, even one the
 		-- repeat filter skipped or one Blizzard never asked for. If we are already
