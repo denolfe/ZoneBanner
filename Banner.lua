@@ -33,6 +33,11 @@ local FADE_IN, FADE_OUT, GROW = 0.5, 1.0, 0.5
 -- walking back and forth over a border never builds a backlog of stale names.
 local MIN_VISIBLE = 1.5
 local HANDOFF_FADE = 0.4
+-- A discovery usually lands a moment after its banner. Instead of popping in, the
+-- line fades in while the banner eases to its new size, and the banner stays up long
+-- enough to read it (rewinding a fade-out smoothly if it had already started).
+local DETAIL_FADE, RESIZE = 0.4, 0.3
+local DETAIL_MIN_VISIBLE = 2
 -- IsResting() can lag the zone event by a moment when you first enter a city.
 local EVALUATE_DELAY = 0.1
 
@@ -42,12 +47,17 @@ local DETAIL_R, DETAIL_G, DETAIL_B = 1, 0.93, 0.76 -- Blizzard's default zone-te
 
 local frame
 local elapsedTotal, holdTime, fadeOut = 0, 3, FADE_OUT
+local grown = false -- the bars finished sweeping out
+-- Late-detail animation: frame height and title offset ease from -> to.
+local currentHeight, currentOffset = 0, 0
+local resizeFrom, resizeTo, offsetFrom, offsetTo, resizeElapsed
+local detailElapsed
 local lineWidth, shadowHeight = WIDTH, 80
 
 -- What is on screen now, and the one waiting (latest wins).
 -- detail = optional small line under the title (e.g. "Discovered");
 -- onDetailShown = callback run once that detail is actually on screen.
-local currentTitle, currentSub
+local currentTitle, currentSub, currentDetail
 local pendingTitle, pendingSub, pendingDetail, pendingDetailShown
 
 -- A discovery that arrived before its banner (the usual order: the server's
@@ -84,6 +94,14 @@ local function EaseOut(p)
 	return 1 - p * p
 end
 
+-- Sets the banner height and the title's offset from the centre together.
+local function ApplySize(height, offset)
+	currentHeight, currentOffset = height, offset
+	frame:SetHeight(height)
+	frame.Title:ClearAllPoints()
+	frame.Title:SetPoint("CENTER", frame, "CENTER", 0, offset)
+end
+
 local function OnUpdate(self, elapsed)
 	elapsedTotal = elapsedTotal + elapsed
 	local fadeOutStart = FADE_IN + holdTime
@@ -103,7 +121,7 @@ local function OnUpdate(self, elapsed)
 			pendingTitle, pendingSub, pendingDetail, pendingDetailShown = nil, nil, nil, nil
 			Display(title, subtitle, detail, onShown)
 		else
-			currentTitle, currentSub = nil, nil
+			currentTitle, currentSub, currentDetail = nil, nil, nil
 			self:Hide()
 		end
 		return
@@ -117,12 +135,30 @@ local function OnUpdate(self, elapsed)
 		self:SetAlpha(1 - (t - fadeOutStart) / fadeOut)
 	end
 
-	if t <= GROW then
+	if not grown then
 		local p = EaseOut(min(1, t / GROW))
 		local w = max(1, lineWidth * p)
 		self.TopLine:SetWidth(w)
 		self.BottomLine:SetWidth(w)
 		self.Shadow:SetHeight(max(1, shadowHeight * p))
+		grown = p >= 1
+	end
+
+	if resizeElapsed then
+		resizeElapsed = resizeElapsed + elapsed
+		local p = EaseOut(min(1, resizeElapsed / RESIZE))
+		ApplySize(resizeFrom + (resizeTo - resizeFrom) * p, offsetFrom + (offsetTo - offsetFrom) * p)
+		if p >= 1 then
+			resizeElapsed = nil
+		end
+	end
+	if detailElapsed then
+		detailElapsed = detailElapsed + elapsed
+		local p = min(1, detailElapsed / DETAIL_FADE)
+		self.Detail:SetAlpha(p)
+		if p >= 1 then
+			detailElapsed = nil
+		end
 	end
 end
 
@@ -199,11 +235,12 @@ end
 -- Sets the texts and stacks subtitle / title / detail, centred between the bars.
 -- The title is anchored to the frame's centre, so a single line is centred no matter
 -- what GetStringHeight reports; measured heights only shift it for the extra lines.
+-- Returns the banner height and title offset; the caller applies them (at once, or
+-- eased when a line arrives late).
 local function Layout(subtitle, title, detail)
 	local hasSub = subtitle ~= nil
 	local hasDetail = detail ~= nil
 	frame.SubTitle:ClearAllPoints()
-	frame.Title:ClearAllPoints()
 	frame.Detail:ClearAllPoints()
 	frame.SubTitle:SetText(subtitle or "")
 	frame.SubTitle:SetShown(hasSub)
@@ -227,8 +264,35 @@ local function Layout(subtitle, title, detail)
 		frame.Detail:SetPoint("TOP", frame.Title, "BOTTOM", 0, -DETAIL_GAP)
 	end
 	-- Centre the whole block: shift the title by half the difference above vs below.
-	frame.Title:SetPoint("CENTER", frame, "CENTER", 0, (below - above) / 2 - OPTICAL_NUDGE)
-	frame:SetHeight(math.max(MIN_HEIGHT, titleHeight + above + below + PADDING * 2))
+	local offset = (below - above) / 2 - OPTICAL_NUDGE
+	return max(MIN_HEIGHT, titleHeight + above + below + PADDING * 2), offset
+end
+
+-- Adds a detail line to the banner already on screen: the line fades in, the banner
+-- eases to its new size, and it stays up long enough to read the line.
+local function AddDetailToShown(detail)
+	if detail == currentDetail then
+		return -- the same line again (a second copy): nothing to animate
+	end
+	currentDetail = detail
+	local fromHeight, fromOffset = currentHeight, currentOffset
+	local toHeight, toOffset = Layout(currentSub, currentTitle, detail)
+	resizeFrom, resizeTo, offsetFrom, offsetTo = fromHeight, toHeight, fromOffset, toOffset
+	resizeElapsed = 0
+	ApplySize(fromHeight, fromOffset)
+	frame.Detail:SetAlpha(0)
+	detailElapsed = 0
+
+	local fadeOutStart = FADE_IN + holdTime
+	if elapsedTotal >= fadeOutStart then
+		-- Already fading out: rewind to the point in the fade-in with the same alpha.
+		local alpha = max(0, 1 - (elapsedTotal - fadeOutStart) / fadeOut)
+		elapsedTotal = alpha * FADE_IN
+		fadeOut = FADE_OUT
+		holdTime = DETAIL_MIN_VISIBLE
+	else
+		holdTime = max(holdTime, elapsedTotal - FADE_IN + DETAIL_MIN_VISIBLE)
+	end
 end
 
 local function RunShown(onShown)
@@ -241,9 +305,12 @@ end
 -- Assigns the forward-declared `local Display` above; luacheck confirms it is local.
 Display = function(title, subtitle, detail, onDetailShown) -- check-ignore: global-write forward-declared local
 	frame = frame or Build()
-	currentTitle, currentSub = title, subtitle
+	currentTitle, currentSub, currentDetail = title, subtitle, detail
 	ns.AreaFilter.MarkShown(title, subtitle, GetTime())
-	Layout(subtitle, title, detail)
+	ApplySize(Layout(subtitle, title, detail))
+	resizeElapsed, detailElapsed = nil, nil
+	frame.Detail:SetAlpha(1)
+	grown = false
 	if detail then
 		RunShown(onDetailShown)
 	end
@@ -324,7 +391,7 @@ function Banner.AddDiscovery(name, detail, onShown)
 		return
 	end
 	if frame and frame:IsShown() and MatchesArea(name, currentTitle, currentSub) then
-		Layout(currentSub, currentTitle, detail)
+		AddDetailToShown(detail)
 		RunShown(onShown)
 	elseif pendingTitle and MatchesArea(name, pendingTitle, pendingSub) then
 		-- A second copy of the same discovery (say, on another event) must not lose

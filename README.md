@@ -46,7 +46,9 @@ Options:
   Forever the on-screen line arrives as `UI_INFO_MESSAGE` ("Discovered: Tranquil Gardens
   Cemetery"). `SYSMSG` is watched too. The chat copy with the XP is left alone. A
   discovery that arrives just before its banner waits up to
-  3 seconds for it.
+  3 seconds for it. One that arrives just after (the usual case) fades in while the
+  banner eases to its new size, and the banner stays up at least 2 more seconds so you
+  can read it.
 - Hiding Blizzard's discovery line works by taking over two events. `UIErrorsFrame` stops
   listening to `UI_INFO_MESSAGE` and `SYSMSG`, and the addon hands every one of those
   messages to `UIErrorsFrame`'s own event handler, so colour, sound and flashing stay

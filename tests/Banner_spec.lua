@@ -4,7 +4,7 @@ describe("Banner with discoveries and the repeat filter", function()
 	local ns, now, timers, hook, zone, subzone
 
 	local function StubObject()
-		local o = { shown = false }
+		local o = { shown = false, scripts = {} }
 		return setmetatable(o, {
 			__index = function(_, key)
 				if key == "Show" then
@@ -15,6 +15,12 @@ describe("Banner with discoveries and the repeat filter", function()
 					return function(self) return self.shown end
 				elseif key == "SetText" then
 					return function(self, text) self.text = text end
+				elseif key == "SetAlpha" then
+					return function(self, a) self.alpha = a end
+				elseif key == "SetHeight" then
+					return function(self, h) self.height = h end
+				elseif key == "SetScript" then
+					return function(self, name, fn) self.scripts[name] = fn end
 				elseif key == "CreateTexture" or key == "CreateFontString" then
 					return function() return StubObject() end
 				end
@@ -36,6 +42,17 @@ describe("Banner with discoveries and the repeat filter", function()
 		zone, subzone = newZone, newSub or ""
 		hook(_G.SubZoneTextFrame)
 		RunTimers()
+	end
+
+	-- Advances the banner's OnUpdate by `seconds` in small steps.
+	local function Tick(seconds)
+		local f = _G.ZoneBannerFrameStub
+		for _ = 1, math.floor(seconds / 0.05 + 0.5) do
+			now = now + 0.05
+			if f.shown then
+				f.scripts.OnUpdate(f, 0.05)
+			end
+		end
 	end
 
 	local function OnScreen()
@@ -118,6 +135,49 @@ describe("Banner with discoveries and the repeat filter", function()
 		assert.are.equal("Menethil Bay", title)
 		assert.are.equal("Discovered!", detail)
 		assert.is_true(ran)
+	end)
+
+	it("fades a late discovery line in instead of popping it", function()
+		Enter("Duskwood", "Tranquil Gardens Cemetery")
+		Tick(1)
+		ns.Banner.AddDiscovery("Tranquil Gardens Cemetery", "Discovered")
+		local f = _G.ZoneBannerFrameStub
+		assert.are.equal(0, f.Detail.alpha)
+		Tick(0.2)
+		assert.is_true(f.Detail.alpha > 0 and f.Detail.alpha < 1)
+		Tick(0.5)
+		assert.are.equal(1, f.Detail.alpha)
+	end)
+
+	it("eases the banner to its new height", function()
+		Enter("Duskwood", "Tranquil Gardens Cemetery")
+		Tick(1)
+		local f = _G.ZoneBannerFrameStub
+		local before = f.height
+		ns.Banner.AddDiscovery("Tranquil Gardens Cemetery", "Discovered")
+		assert.are.equal(before, f.height)
+		Tick(1)
+		assert.is_true(f.height > before)
+	end)
+
+	it("keeps the banner up long enough to read a late line", function()
+		Enter("Duskwood", "Tranquil Gardens Cemetery")
+		Tick(0.5 + 3 + 0.5) -- fade in, hold, halfway through the fade-out
+		ns.Banner.AddDiscovery("Tranquil Gardens Cemetery", "Discovered")
+		Tick(2)
+		assert.are.equal("Tranquil Gardens Cemetery", (OnScreen()))
+		assert.are.equal(1, _G.ZoneBannerFrameStub.alpha)
+		Tick(3)
+		assert.is_false((OnScreen()) and true or false)
+	end)
+
+	it("doesn't fade the same line in twice", function()
+		Enter("Duskwood", "Tranquil Gardens Cemetery")
+		Tick(1)
+		ns.Banner.AddDiscovery("Tranquil Gardens Cemetery", "Discovered")
+		Tick(1)
+		ns.Banner.AddDiscovery("Tranquil Gardens Cemetery", "Discovered")
+		assert.are.equal(1, _G.ZoneBannerFrameStub.Detail.alpha)
 	end)
 
 	it("doesn't force a banner for a discovery somewhere else", function()
