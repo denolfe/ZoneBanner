@@ -8,7 +8,7 @@ ns.DB = DB
 
 local SV_NAME = "ZoneBannerDB" -- must match ## SavedVariables in the .toc
 
-DB.CURRENT_VERSION = 2
+DB.CURRENT_VERSION = 3
 
 -- Never put `version` here: its absence is how a fresh install is detected.
 local defaults = {
@@ -18,10 +18,10 @@ local defaults = {
 		citiesOnly = false,
 		-- Hide Blizzard's own zone/subzone text when the banner shows.
 		replaceBlizzard = true,
-		-- Fold "Discovered X: N experience gained" into the banner.
+		-- Fold Blizzard's "Discovered: X" message into the banner.
 		showDiscovery = true,
-		-- Also clear Blizzard's yellow copy (UIErrorsFrame) once ours shows.
-		hideBlizzardDiscovery = false,
+		-- Stop Blizzard's on-screen copy (UIErrorsFrame) when the banner shows ours.
+		hideBlizzardDiscovery = true,
 		-- Seconds the banner stays fully visible.
 		holdTime = 3,
 	},
@@ -40,6 +40,15 @@ local migrations = {
 		local profile = db.profile
 		if type(profile) == "table" and profile.citiesOnly == true then
 			profile.citiesOnly = false
+		end
+	end,
+	[3] = function(db)
+		-- v3 hides Blizzard's on-screen discovery line by default. Until now it was
+		-- off by default and the old version of it was unreliable, so turn it on.
+		-- It can still be turned off in the options.
+		local profile = db.profile
+		if type(profile) == "table" then
+			profile.hideBlizzardDiscovery = true
 		end
 	end,
 }

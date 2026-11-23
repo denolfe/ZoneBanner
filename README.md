@@ -20,7 +20,7 @@ Options:
 - **Hide the default zone text**
 - **Show discoveries in the banner.** On by default. Adds a small "Discovered"
   line under the area name.
-- **Hide Blizzard's discovery message.** Off by default. Stops the on-screen "Discovered" line
+- **Hide Blizzard's discovery message.** On by default. Stops the on-screen "Discovered" line
   at the top of the screen. Other system messages still show as normal. If the banner
   doesn't show a discovery within 4 seconds, Blizzard's line is shown after all.
 - **Banner duration**
@@ -81,10 +81,10 @@ luajit <skill>/scripts/smoke_load.lua
 8. **`/reload` mid-combat**, then **upgrade** (edit `ZoneBannerDB` in WTF to garbage values
    and reload). Settings should self-heal.
 9. **Discovery:** walk into an area you haven't explored yet, using a low-level character
-   or a fresh zone. The banner should show a "Discovered" line. With "Hide
-   Blizzard's discovery message" off, Blizzard's line still shows above. Turn it on
-   and try another undiscovered area: the line should never appear. Other on-screen
-   messages (for example accepting a quest, or `/afk`) should still show, with their sounds.
+   or a fresh zone. The banner should show a "Discovered" line, and Blizzard's
+   on-screen line should never appear. Other on-screen messages (for example accepting
+   a quest, or `/afk`) should still show, with their sounds. Turn "Hide Blizzard's
+   discovery message" off and try another undiscovered area: Blizzard's line shows again.
    If the discovery line never shows, run `/zonebanner debug`, walk into a new area, and
    send me the lines it prints.
 10. **Repeats:** ride from the open Wetlands into Menethil Bay and back out. You should
