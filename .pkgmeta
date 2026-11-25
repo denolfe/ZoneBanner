@@ -17,4 +17,5 @@ ignore:
   - .luarc.json
   - stylua.toml
   - README.md
+  - AGENTS.md
   - docs
