@@ -2,7 +2,7 @@
 
 Shows the area you walk into on a banner styled like the level-up banner.
 
-![ZoneBanner showing Trade District in Stormwind City](docs/screenshot.png)
+![ZoneBanner showing Blackrock Mountain in Burning Steppes](docs/screenshot.webp)
 
 Made for WoW: Forever.
 
